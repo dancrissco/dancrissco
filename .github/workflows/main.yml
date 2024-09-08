@@ -1,0 +1,69 @@
+import serial
+import time
+import matplotlib.pyplot as plt
+
+# Setup serial connection (adjust the port and baud rate as needed)
+ser = serial.Serial('COM4', 9600, timeout=1)
+
+# Lists to store IMU data
+x_data = []
+y_data = []
+z_data = []
+
+# Function to read IMU data from serial
+def read_imu_data():
+    if ser.in_waiting > 0:
+        line = ser.readline().decode('utf-8').strip()
+        return line
+    return None
+
+# Function to collect 100 readings
+def collect_imu_data():
+    count = 0
+    while count < 100:
+        data = read_imu_data()
+        if data:
+            try:
+                # Check for the "Movement data: " prefix
+                if data.startswith("Movement data:"):
+                    print(f"Raw data: {data}")  # Debugging line to check the format
+                    # Remove the prefix and handle extra spaces
+                    data = data.replace("Movement data:", "").strip()
+                    data_parts = data.split()  # Split based on any whitespace
+                    if len(data_parts) == 6:
+                        x_index = data_parts.index('x')
+                        y_index = data_parts.index('y')
+                        z_index = data_parts.index('z')
+
+                        x = float(data_parts[x_index + 1])
+                        y = float(data_parts[y_index + 1])
+                        z = float(data_parts[z_index + 1])
+
+                        # Append the values to lists
+                        x_data.append(x)
+                        y_data.append(y)
+                        z_data.append(z)
+                        count += 1
+            except (ValueError, IndexError) as e:
+                print(f"Invalid data or error: {data} - {e}")
+        time.sleep(0.1)
+
+# Function to plot the collected data
+def plot_imu_data():
+    plt.figure(figsize=(10, 6))
+    plt.plot(x_data, label="X Axis")
+    plt.plot(y_data, label="Y Axis")
+    plt.plot(z_data, label="Z Axis")
+    plt.xlabel("Sample Number")
+    plt.ylabel("IMU Data")
+    plt.title("IMU X, Y, Z Data over Time")
+    plt.legend()
+    plt.show()
+
+# Collect data and plot after 100 readings
+try:
+    collect_imu_data()
+    plot_imu_data()
+except KeyboardInterrupt:
+    ser.close()
+    print("Serial connection closed.")
