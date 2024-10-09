@@ -1,0 +1,92 @@
+import cv2
+import numpy as np
+import random
+import matplotlib.pyplot as plt
+import scipy.stats as stats
+from scipy.stats import shapiro
+
+# Function to create a plate with a given size
+def create_plate(size, filename):
+    plate = np.ones((200, 200), dtype=np.uint8) * 255  # Create a white canvas
+    start_point = ((200-size)//2, (200-size)//2)
+    end_point = ((200+size)//2, (200+size)//2)
+    cv2.rectangle(plate, start_point, end_point, (0, 0, 0), -1)  # Draw black square
+    cv2.imwrite(filename, plate)
+
+# Define plate sizes with even smaller variations
+sizes = np.random.normal(100, 0.5, 70).astype(int).tolist()  # 70 plates around 100 mm ± 0.5 mm
+sizes += [101] * 10  # 10 plates oversized by 1 mm
+sizes += [102] * 10  # 10 plates oversized by 2 mm
+sizes += [99] * 5    # 5 plates undersized by 1 mm
+sizes += [98] * 5    # 5 plates undersized by 2 mm
+
+# Shuffle the sizes to randomize the plate generation
+random.shuffle(sizes)
+
+# Create the plate images
+for i, size in enumerate(sizes):
+    create_plate(size, f'plate_{i}.png')
+
+# Function to detect plate size using OpenCV
+def detect_plate_size(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 127, 255, cv2.THRESH_BINARY_INV)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    if contours:
+        # Find the bounding box around the contour
+        x, y, w, h = cv2.boundingRect(contours[0])
+        return max(w, h)  # Return the maximum side length
+    return None
+
+# Pass 30 random plates for detection
+random_plates = random.sample(range(100), 30)
+detected_sizes = []
+
+for i in random_plates:
+    img = cv2.imread(f'plate_{i}.png')
+    size = detect_plate_size(img)
+    if size:
+        detected_sizes.append(size)
+
+# Normality check using the Shapiro-Wilk test
+stat, p_value = shapiro(detected_sizes)
+print(f'Shapiro-Wilk test statistic: {stat}, p-value: {p_value}')
+
+# Prompt the user if they want to continue if p-value < 0.05
+if p_value < 0.05:
+    proceed = input(f"Data is not normally distributed (p-value = {p_value}). Do you want to continue with Cpk calculation? (y/n): ")
+    if proceed.lower() != 'y':
+        print("Cpk calculation stopped due to non-normal data.")
+        exit()
+else:
+    print("Data is normally distributed. Proceeding with Cpk calculation.")
+
+# Calculate Cp and Cpk
+USL = 105  # Upper spec limit
+LSL = 95   # Lower spec limit
+mu = np.mean(detected_sizes)
+sigma = np.std(detected_sizes)
+
+Cp = (USL - LSL) / (6 * sigma)
+Cpk = min((USL - mu) / (3 * sigma), (mu - LSL) / (3 * sigma))
+
+print(f'Mean (μ): {mu:.2f}, Standard Deviation (σ): {sigma:.2f}')
+print(f'Cp: {Cp:.2f}, Cpk: {Cpk:.2f}')
+
+# Plot the bell curve with the size distribution
+plt.hist(detected_sizes, bins=10, density=True, alpha=0.6, color='g')
+
+# Add a 'best fit' line for the bell curve
+xmin, xmax = plt.xlim()
+x = np.linspace(xmin, xmax, 100)
+p = stats.norm.pdf(x, mu, sigma)
+plt.plot(x, p, 'k', linewidth=2)
+
+title = "Size Distribution and Bell Curve"
+plt.title(title)
+plt.xlabel("Plate Size (mm)")
+plt.ylabel("Frequency")
+
+# Ensure the plot is displayed correctly
+plt.show()
